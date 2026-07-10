@@ -7,86 +7,140 @@ on:
     branches: [ "master" ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up all JDKs for Toolchains
-      uses: actions/setup-java@v4
-      id: setup-java
-      with:
-        distribution: 'temurin'
-        java-version: |
-          8
-          16
-          17
-          21
-          25
-        check-latest: true
+      - name: Set up JDKs
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            8
+            16
+            17
+            21
+            25
+          cache: maven
+          check-latest: false
 
-    - name: Generate Maven Toolchains XML
-      run: |
-        mkdir -p ~/.m2
-        cat > ~/.m2/toolchains.xml << 'EOF'
-        <toolchains>
-          <toolchain>
-            <type>jdk</type>
-            <provides><version>1.8</version></provides>
-            <configuration><jdkHome>${{ steps.setup-java.outputs.path-8 }}</jdkHome></configuration>
-          </toolchain>
-          <toolchain>
-            <type>jdk</type>
-            <provides><version>16</version></provides>
-            <configuration><jdkHome>${{ steps.setup-java.outputs.path-16 }}</jdkHome></configuration>
-          </toolchain>
-          <toolchain>
-            <type>jdk</type>
-            <provides><version>17</version></provides>
-            <configuration><jdkHome>${{ steps.setup-java.outputs.path-17 }}</jdkHome></configuration>
-          </toolchain>
-          <toolchain>
-            <type>jdk</type>
-            <provides><version>21</version></provides>
-            <configuration><jdkHome>${{ steps.setup-java.outputs.path-21 }}</jdkHome></configuration>
-          </toolchain>
-          <toolchain>
-            <type>jdk</type>
-            <provides><version>25</version></provides>
-            <configuration><jdkHome>${{ steps.setup-java.outputs.path-25 }}</jdkHome></configuration>
-          </toolchain>
-        </toolchains>
-        EOF
-        cat ~/.m2/toolchains.xml
+      - name: Generate Maven Toolchains
+        shell: bash
+        run: |
+          set -euo pipefail
 
-    - name: Cache Maven dependencies
-      uses: actions/cache@v3
-      with:
-        path: ~/.m2/repository
-        key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-        restore-keys: |
-          ${{ runner.os }}-maven-
+          # setup-java 安装多个 JDK 后会提供这些环境变量
+          test -x "$JAVA_HOME_8_X64/bin/javac"
+          test -x "$JAVA_HOME_16_X64/bin/javac"
+          test -x "$JAVA_HOME_17_X64/bin/javac"
+          test -x "$JAVA_HOME_21_X64/bin/javac"
+          test -x "$JAVA_HOME_25_X64/bin/javac"
 
-    # ================= 新增的修复步骤 =================
-    - name: Install bundled flow-nbt 2.0.2 (bypass gcnt bukkitmc 500)
-      run: |
-        mvn install:install-file \
-          -Dfile=libs/flow-nbt-2.0.2.jar \
-          -DgroupId=com.flowpowered \
-          -DartifactId=flow-nbt \
-          -Dversion=2.0.2 \
-          -Dpackaging=jar \
-          -DgeneratePom=true
-    # ================================================
+          mkdir -p "$HOME/.m2"
 
-    - name: Build with Maven
-      run: mvn -B clean package --file pom.xml -U
+          cat > "$HOME/.m2/toolchains.xml" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <toolchains>
+            <toolchain>
+              <type>jdk</type>
+              <provides>
+                <version>1.8</version>
+              </provides>
+              <configuration>
+                <jdkHome>${JAVA_HOME_8_X64}</jdkHome>
+              </configuration>
+            </toolchain>
 
-    - name: Upload built JAR
-      uses: actions/upload-artifact@v4
-      with:
-        name: SkyWarsReloaded-JAR
-        path: skywars-assembly/target/*.jar
+            <toolchain>
+              <type>jdk</type>
+              <provides>
+                <version>16</version>
+              </provides>
+              <configuration>
+                <jdkHome>${JAVA_HOME_16_X64}</jdkHome>
+              </configuration>
+            </toolchain>
+
+            <toolchain>
+              <type>jdk</type>
+              <provides>
+                <version>17</version>
+              </provides>
+              <configuration>
+                <jdkHome>${JAVA_HOME_17_X64}</jdkHome>
+              </configuration>
+            </toolchain>
+
+            <toolchain>
+              <type>jdk</type>
+              <provides>
+                <version>21</version>
+              </provides>
+              <configuration>
+                <jdkHome>${JAVA_HOME_21_X64}</jdkHome>
+              </configuration>
+            </toolchain>
+
+            <toolchain>
+              <type>jdk</type>
+              <provides>
+                <version>25</version>
+              </provides>
+              <configuration>
+                <jdkHome>${JAVA_HOME_25_X64}</jdkHome>
+              </configuration>
+            </toolchain>
+          </toolchains>
+          EOF
+
+      - name: Verify Java Toolchains
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Default Java:"
+          java -version
+          mvn -version
+
+          echo "Installed compilers:"
+          "$JAVA_HOME_8_X64/bin/javac" -version
+          "$JAVA_HOME_16_X64/bin/javac" -version
+          "$JAVA_HOME_17_X64/bin/javac" -version
+          "$JAVA_HOME_21_X64/bin/javac" -version
+          "$JAVA_HOME_25_X64/bin/javac" -version
+
+          echo "Toolchains:"
+          cat "$HOME/.m2/toolchains.xml"
+
+      # 先保留你的临时 flow-nbt 方案。
+      # 如果没有这个文件，这一步会自动跳过。
+      - name: Install bundled flow-nbt 2.0.2
+        if: ${{ hashFiles('libs/flow-nbt-2.0.2.jar') != '' }}
+        shell: bash
+        run: |
+          mvn -B -ntp install:install-file \
+            -Dfile=libs/flow-nbt-2.0.2.jar \
+            -DgroupId=com.flowpowered \
+            -DartifactId=flow-nbt \
+            -Dversion=2.0.2 \
+            -Dpackaging=jar \
+            -DgeneratePom=true
+
+      - name: Build with Maven
+        run: mvn -B -ntp -U clean package --file pom.xml
+
+      - name: Upload built JARs
+        uses: actions/upload-artifact@v4
+        with:
+          name: SkyWarsReloaded-JAR
+          if-no-files-found: error
+          path: |
+            target/SWR-*.jar
+            skywars-assembly/target/SWR-*.jar

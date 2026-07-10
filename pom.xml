@@ -39,6 +39,7 @@
         <module>v1_19_R1</module>
         <module>v1_20_R1</module>
         <module>v1_21_R1</module>
+        <module>v26_2_R1</module>
         <module>skywars-assembly</module>
     </modules>
 
@@ -111,9 +112,29 @@
                 <module>v1_21_R1</module>
             </modules>
         </profile>
+        <profile>
+            <id>java25</id>
+
+            <properties>
+                <maven.compiler.source>25</maven.compiler.source>
+                <maven.compiler.target>25</maven.compiler.target>
+            </properties>
+
+            <activation>
+                <jdk>25</jdk>
+            </activation>
+
+            <modules>
+                <module>v26_2_R1</module>
+            </modules>
+        </profile>
     </profiles>
 
     <repositories>
+        <repository>
+            <id>spigotmc-snapshots</id>
+            <url>https://hub.spigotmc.org/nexus/content/repositories/snapshots/</url>
+        </repository>
         <repository>
             <id>bukkitmc</id>
             <url>https://nexuslite.gcnt.net/repos/bukkit/</url>
