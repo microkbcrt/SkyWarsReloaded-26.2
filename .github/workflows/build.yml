@@ -1,0 +1,79 @@
+name: Build with Maven
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+  workflow_dispatch:  # 手动触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up all JDKs for Toolchains
+      uses: actions/setup-java@v4
+      id: setup-java
+      with:
+        distribution: 'temurin'
+        java-version: |
+          8
+          16
+          17
+          21
+          25   # 新增 Java 25，用于适配 MC 26.2
+
+    - name: Generate Maven Toolchains XML
+      run: |
+        mkdir -p ~/.m2
+        cat > ~/.m2/toolchains.xml << 'EOF'
+        <toolchains>
+          <toolchain>
+            <type>jdk</type>
+            <provides><version>1.8</version></provides>
+            <configuration><jdkHome>${{ steps.setup-java.outputs.path-8 }}</jdkHome></configuration>
+          </toolchain>
+          <toolchain>
+            <type>jdk</type>
+            <provides><version>16</version></provides>
+            <configuration><jdkHome>${{ steps.setup-java.outputs.path-16 }}</jdkHome></configuration>
+          </toolchain>
+          <toolchain>
+            <type>jdk</type>
+            <provides><version>17</version></provides>
+            <configuration><jdkHome>${{ steps.setup-java.outputs.path-17 }}</jdkHome></configuration>
+          </toolchain>
+          <toolchain>
+            <type>jdk</type>
+            <provides><version>21</version></provides>
+            <configuration><jdkHome>${{ steps.setup-java.outputs.path-21 }}</jdkHome></configuration>
+          </toolchain>
+          <toolchain>
+            <type>jdk</type>
+            <provides><version>25</version></provides>
+            <configuration><jdkHome>${{ steps.setup-java.outputs.path-25 }}</jdkHome></configuration>
+          </toolchain>
+        </toolchains>
+        EOF
+        cat ~/.m2/toolchains.xml   # 调试时打印内容
+
+    - name: Cache Maven dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.m2/repository
+        key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+        restore-keys: |
+          ${{ runner.os }}-maven-
+
+    - name: Build with Maven
+      run: mvn -B clean package --file pom.xml -U
+
+    - name: Upload built JAR
+      uses: actions/upload-artifact@v4
+      with:
+        name: SkyWarsReloaded-JAR
+        path: skywars-assembly/target/*.jar
