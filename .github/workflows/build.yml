@@ -70,6 +70,18 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-maven-
 
+    # ================= 新增的修复步骤 =================
+    - name: Install bundled flow-nbt 2.0.2 (bypass gcnt bukkitmc 500)
+      run: |
+        mvn install:install-file \
+          -Dfile=libs/flow-nbt-2.0.2.jar \
+          -DgroupId=com.flowpowered \
+          -DartifactId=flow-nbt \
+          -Dversion=2.0.2 \
+          -Dpackaging=jar \
+          -DgeneratePom=true
+    # ================================================
+
     - name: Build with Maven
       run: mvn -B clean package --file pom.xml -U
 
