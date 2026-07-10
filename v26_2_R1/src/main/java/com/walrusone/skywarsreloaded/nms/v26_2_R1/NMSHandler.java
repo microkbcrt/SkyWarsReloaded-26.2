@@ -1,6 +1,10 @@
 package com.walrusone.skywarsreloaded.nms.v26_2_R1;
 
+import java.lang.reflect.Method;
+
 import org.bukkit.GameRule;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
 import org.bukkit.World;
 
 public class NMSHandler
@@ -14,7 +18,7 @@ public class NMSHandler
                 case "minecraft:spawn_mobs":
                     setBooleanGameRule(
                             world,
-                            GameRule.SPAWN_MOBS,
+                            "spawn_mobs",
                             ruleName,
                             value
                     );
@@ -24,7 +28,7 @@ public class NMSHandler
                 case "minecraft:mob_griefing":
                     setBooleanGameRule(
                             world,
-                            GameRule.MOB_GRIEFING,
+                            "mob_griefing",
                             ruleName,
                             value
                     );
@@ -34,7 +38,7 @@ public class NMSHandler
                 case "minecraft:show_death_messages":
                     setBooleanGameRule(
                             world,
-                            GameRule.SHOW_DEATH_MESSAGES,
+                            "show_death_messages",
                             ruleName,
                             value
                     );
@@ -44,7 +48,7 @@ public class NMSHandler
                 case "minecraft:show_advancement_messages":
                     setBooleanGameRule(
                             world,
-                            GameRule.SHOW_ADVANCEMENT_MESSAGES,
+                            "show_advancement_messages",
                             ruleName,
                             value
                     );
@@ -54,7 +58,7 @@ public class NMSHandler
                 case "minecraft:advance_time":
                     setBooleanGameRule(
                             world,
-                            GameRule.ADVANCE_TIME,
+                            "advance_time",
                             ruleName,
                             value
                     );
@@ -66,67 +70,140 @@ public class NMSHandler
                     return;
 
                 default:
-                    /*
-                     * 当前 Core 只调用上面的六条规则。
-                     * 对其他规则保留旧 handler 的行为。
-                     */
                     super.setGameRule(world, ruleName, value);
             }
-        } catch (IllegalArgumentException exception) {
+        } catch (Exception exception) {
             exception.printStackTrace();
         }
     }
 
     private void setBooleanGameRule(
             World world,
-            GameRule<Boolean> gameRule,
-            String ruleName,
+            String registryKey,
+            String originalRuleName,
             String value
     ) {
         if (!"true".equalsIgnoreCase(value)
                 && !"false".equalsIgnoreCase(value)) {
             throw new IllegalArgumentException(
                     "Invalid boolean GameRule value: "
-                            + ruleName + " -> " + value
+                            + originalRuleName + " -> " + value
             );
         }
 
-        world.setGameRule(gameRule, Boolean.parseBoolean(value));
+        GameRule<?> gameRule = getGameRule(registryKey);
+
+        setGameRuleUnchecked(
+                world,
+                gameRule,
+                Boolean.parseBoolean(value)
+        );
     }
 
     private void setFireSpreadGameRule(
             World world,
-            String ruleName,
+            String originalRuleName,
             String value
     ) {
+        GameRule<?> gameRule =
+                getGameRule("fire_spread_radius_around_player");
+
         final int radius;
 
         if ("false".equalsIgnoreCase(value)) {
-            // 旧 doFireTick=false 等同于禁止火焰蔓延。
+            /*
+             * 旧 doFireTick=false：
+             * 禁止火焰蔓延。
+             */
             radius = 0;
         } else if ("true".equalsIgnoreCase(value)) {
             /*
-             * 不硬编码一个猜测的半径。
-             * 使用当前 Spigot 版本为该规则提供的默认值。
+             * 通过反射读取默认值。
+             *
+             * 原因：
+             * Spigot 26.2 的 GameRule 是接口；
+             * Paper 26.2 的 GameRule 是抽象类。
+             * 直接调用接口方法可能导致进一步的二进制兼容错误。
              */
-            radius = GameRule.FIRE_SPREAD_RADIUS_AROUND_PLAYER
-                    .getDefaultValue();
+            radius = getIntegerDefaultValue(gameRule);
         } else {
             try {
                 radius = Integer.parseInt(value);
             } catch (NumberFormatException exception) {
                 throw new IllegalArgumentException(
                         "Invalid integer GameRule value: "
-                                + ruleName + " -> " + value,
+                                + originalRuleName + " -> " + value,
                         exception
                 );
             }
         }
 
-        world.setGameRule(
-                GameRule.FIRE_SPREAD_RADIUS_AROUND_PLAYER,
-                radius
+        setGameRuleUnchecked(world, gameRule, radius);
+    }
+
+    private GameRule<?> getGameRule(String key) {
+        GameRule<?> gameRule = Registry.GAME_RULE.get(
+                NamespacedKey.minecraft(key)
         );
+
+        if (gameRule == null) {
+            throw new IllegalArgumentException(
+                    "Invalid GameRule registry key: minecraft:" + key
+            );
+        }
+
+        return gameRule;
+    }
+
+    private int getIntegerDefaultValue(GameRule<?> gameRule) {
+        try {
+            /*
+             * 不直接调用 gameRule.getDefaultValue()。
+             * 反射可以同时适配 Paper 的抽象类实现和
+             * Spigot 的接口实现。
+             */
+            Method method =
+                    GameRule.class.getMethod("getDefaultValue");
+
+            Object defaultValue = method.invoke(gameRule);
+
+            if (!(defaultValue instanceof Integer)) {
+                throw new IllegalStateException(
+                        "Expected integer GameRule default value, got: "
+                                + defaultValue
+                );
+            }
+
+            return (Integer) defaultValue;
+        } catch (ReflectiveOperationException exception) {
+            throw new IllegalStateException(
+                    "Could not read GameRule default value",
+                    exception
+            );
+        }
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private void setGameRuleUnchecked(
+            World world,
+            GameRule<?> gameRule,
+            Object value
+    ) {
+        /*
+         * GameRule 的具体值类型由注册表键决定。
+         * 这里的映射都是固定且已知的：
+         *
+         * Boolean:
+         * spawn_mobs
+         * mob_griefing
+         * show_death_messages
+         * show_advancement_messages
+         * advance_time
+         *
+         * Integer:
+         * fire_spread_radius_around_player
+         */
+        world.setGameRule((GameRule) gameRule, value);
     }
 
     @Override
